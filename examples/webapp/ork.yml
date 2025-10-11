@@ -1,0 +1,61 @@
+version: "1.0"
+project: webapp
+
+services:
+  # Frontend - using a pre-built Docker image
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    env:
+      API_URL: http://localhost:8080
+    health:
+      endpoint: /
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # API - would be cloned from git (example)
+  api:
+    image: node:18-alpine
+    command: [ "node", "-e", "require('http').createServer((req,res)=>res.end('OK')).listen(8080)" ]
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    env:
+      DATABASE_URL: postgres://postgres:test@postgres:5432/webapp
+      REDIS_URL: redis://redis:6379
+    health:
+      endpoint: /health
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Postgres database
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    env:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: webapp
+    health:
+      endpoint: /
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    health:
+      endpoint: /
+      interval: 5s
+      timeout: 3s
+      retries: 3
