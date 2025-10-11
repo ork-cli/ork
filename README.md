@@ -35,3 +35,15 @@ ork ps                   # See what's running
 ork logs api --follow    # Tail logs
 ```
 
+## Core Dependencies
+
+Ork is built with carefully selected Go libraries:
+
+| Package                                               | Purpose           | Why We Use It                                 |
+|-------------------------------------------------------|-------------------|-----------------------------------------------|
+| [Cobra](https://github.com/spf13/cobra)               | CLI framework     | Industry-standard for building CLI apps in Go |
+| [Docker SDK](https://github.com/docker/docker)        | Docker operations | Official Docker client for Go                 |
+| [Lipgloss](https://github.com/charmbracelet/lipgloss) | Terminal styling  | Beautiful, performant terminal output         |
+| [go-yaml](https://github.com/go-yaml/yaml)            | YAML parsing      | Parse `ork.yml` configuration files           |
+| [go-git](https://github.com/go-git/go-git)            | Git operations    | Pure Go git implementation                    |
+
