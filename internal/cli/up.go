@@ -7,6 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ============================================================================
+// Cobra Command Definition
+// ============================================================================
+
 var upCmd = &cobra.Command{
 	Use:   "up <service> [service...]",
 	Short: "Start services and their dependencies",
@@ -27,6 +31,19 @@ var upCmd = &cobra.Command{
 		}
 	},
 }
+
+func init() {
+	// Register the 'up' command with the root command
+	rootCmd.AddCommand(upCmd)
+
+	// Add flags (options) to the command
+	upCmd.Flags().Bool("local", false, "Build and run from local source")
+	upCmd.Flags().Bool("dev", false, "Use development registry images")
+}
+
+// ============================================================================
+// Main Orchestrator
+// ============================================================================
 
 // runUp orchestrates the service startup process
 func runUp(serviceNames []string) error {
@@ -50,6 +67,10 @@ func runUp(serviceNames []string) error {
 	return nil
 }
 
+// ============================================================================
+// Private Helpers - Configuration
+// ============================================================================
+
 // loadAndValidateConfig loads the ork.yml file and validates it
 func loadAndValidateConfig() (*config.Config, error) {
 	cfg, err := config.Load()
@@ -63,6 +84,10 @@ func loadAndValidateConfig() (*config.Config, error) {
 
 	return cfg, nil
 }
+
+// ============================================================================
+// Private Helpers - Service Validation
+// ============================================================================
 
 // validateServiceNames checks if all requested services exist in the config
 func validateServiceNames(serviceNames []string, cfg *config.Config) error {
@@ -82,13 +107,4 @@ func getAvailableServicesList(cfg *config.Config) string {
 		services += name + " "
 	}
 	return services
-}
-
-func init() {
-	// Register the 'up' command with the root command
-	rootCmd.AddCommand(upCmd)
-
-	// Add flags (options) to the command
-	upCmd.Flags().Bool("local", false, "Build and run from local source")
-	upCmd.Flags().Bool("dev", false, "Use development registry images")
 }

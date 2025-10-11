@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+// ============================================================================
+// Public API
+// ============================================================================
+
 // Validate checks if the config is valid and returns helpful error messages
 func (c *Config) Validate() error {
 	// Check required fields
@@ -30,7 +34,12 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ============================================================================
+// Private Orchestrator
+// ============================================================================
+
 // validateService validates a single service definition
+// This orchestrates the validation by delegating to specialized validators
 func validateService(name string, service Service, allServices map[string]Service) error {
 	if err := validateServiceSource(service); err != nil {
 		return err
@@ -50,6 +59,10 @@ func validateService(name string, service Service, allServices map[string]Servic
 
 	return nil
 }
+
+// ============================================================================
+// Private Validators - Source
+// ============================================================================
 
 // validateServiceSource ensures exactly one source is specified (git, image, or build)
 func validateServiceSource(service Service) error {
@@ -81,6 +94,10 @@ func countSources(service Service) int {
 	return count
 }
 
+// ============================================================================
+// Private Validators - Build Configuration
+// ============================================================================
+
 // validateBuildConfig ensures build configuration is valid
 func validateBuildConfig(service Service) error {
 	if service.Build != nil && service.Build.Context == "" {
@@ -88,6 +105,10 @@ func validateBuildConfig(service Service) error {
 	}
 	return nil
 }
+
+// ============================================================================
+// Private Validators - Dependencies
+// ============================================================================
 
 // validateDependencies checks that all dependencies exist and no self-dependencies
 func validateDependencies(serviceName string, deps []string, allServices map[string]Service) error {
@@ -102,6 +123,10 @@ func validateDependencies(serviceName string, deps []string, allServices map[str
 	}
 	return nil
 }
+
+// ============================================================================
+// Private Validators - Ports
+// ============================================================================
 
 // validatePorts ensures port mappings are in the correct format
 func validatePorts(ports []string) error {

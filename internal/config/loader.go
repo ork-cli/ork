@@ -8,6 +8,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ============================================================================
+// Public API
+// ============================================================================
+
 // Load reads and parses the ork.yml configuration file
 // It looks for ork.yml in the current directory, falling back to .ork.yml
 func Load() (*Config, error) {
@@ -31,6 +35,10 @@ func Load() (*Config, error) {
 
 	return &config, nil
 }
+
+// ============================================================================
+// Private Helpers
+// ============================================================================
 
 // findConfigFile searches for ork.yml or .ork.yml in the current directory
 func findConfigFile() (string, error) {

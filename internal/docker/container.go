@@ -7,9 +7,14 @@ import (
 	"os"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
 )
+
+// ============================================================================
+// Type Definitions
+// ============================================================================
 
 // RunOptions contains configuration for running a container
 type RunOptions struct {
@@ -21,6 +26,20 @@ type RunOptions struct {
 	Command    []string          // Override command
 	Entrypoint []string          // Override entrypoint
 }
+
+// ContainerInfo represents information about a running container
+type ContainerInfo struct {
+	ID     string            // Container ID (short version)
+	Name   string            // Container name
+	Image  string            // Image name
+	Status string            // Container status (e.g., "Up 5 minutes")
+	Ports  []string          // Port mappings
+	Labels map[string]string // Container labels
+}
+
+// ============================================================================
+// Public Methods - Container Lifecycle
+// ============================================================================
 
 // Run creates and starts a Docker container
 // This orchestrates the full container lifecycle but delegates to specialized functions
@@ -47,6 +66,83 @@ func (c *Client) Run(ctx context.Context, opts RunOptions) (containerID string, 
 
 	return containerID, nil
 }
+
+// Stop stops a running Docker container
+func (c *Client) Stop(ctx context.Context, containerID string) error {
+	if containerID == "" {
+		return fmt.Errorf("container ID cannot be empty")
+	}
+
+	// Stop the container (with a 10-second timeout for graceful shutdown)
+	timeout := 10
+	stopOptions := container.StopOptions{
+		Timeout: &timeout,
+	}
+
+	if err := c.cli.ContainerStop(ctx, containerID, stopOptions); err != nil {
+		return fmt.Errorf("failed to stop container %s: %w", containerID, err)
+	}
+
+	return nil
+}
+
+// Remove removes a Docker container (must be stopped first)
+func (c *Client) Remove(ctx context.Context, containerID string) error {
+	if containerID == "" {
+		return fmt.Errorf("container ID cannot be empty")
+	}
+
+	removeOptions := container.RemoveOptions{
+		Force: false, // Don't force-remove running containers
+	}
+
+	if err := c.cli.ContainerRemove(ctx, containerID, removeOptions); err != nil {
+		return fmt.Errorf("failed to remove container %s: %w", containerID, err)
+	}
+
+	return nil
+}
+
+// StopAndRemove stops and removes a Docker container
+func (c *Client) StopAndRemove(ctx context.Context, containerID string) error {
+	// Stop first
+	if err := c.Stop(ctx, containerID); err != nil {
+		return err
+	}
+
+	// Then remove
+	if err := c.Remove(ctx, containerID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ============================================================================
+// Public Methods - Container Information
+// ============================================================================
+
+// List returns a list of containers managed by Ork
+func (c *Client) List(ctx context.Context, projectName string) ([]ContainerInfo, error) {
+	// Build filters to only show Ork-managed containers
+	filterArgs := buildOrkFilters(projectName)
+
+	// List containers
+	containers, err := c.cli.ContainerList(ctx, container.ListOptions{
+		All:     true, // Include stopped containers
+		Filters: filterArgs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	// Convert to our ContainerInfo format
+	return convertToContainerInfo(containers), nil
+}
+
+// ============================================================================
+// Private Helpers - Run-related
+// ============================================================================
 
 // buildContainerConfig creates the container configuration from options
 func buildContainerConfig(opts RunOptions) (*container.Config, error) {
@@ -147,6 +243,75 @@ func (c *Client) pullImageIfNeeded(ctx context.Context, imageName string) error 
 	return nil
 }
 
+// ============================================================================
+// Private Helpers - List-related
+// ============================================================================
+
+// buildOrkFilters creates filters to find Ork-managed containers
+func buildOrkFilters(projectName string) filters.Args {
+	filterArgs := filters.NewArgs()
+
+	// Filter by Ork label
+	filterArgs.Add("label", "ork.managed=true")
+
+	// If a project name is specified, filter by project
+	if projectName != "" {
+		filterArgs.Add("label", fmt.Sprintf("ork.project=%s", projectName))
+	}
+
+	return filterArgs
+}
+
+// convertToContainerInfo converts Docker API containers to our format
+func convertToContainerInfo(containers []container.Summary) []ContainerInfo {
+	result := make([]ContainerInfo, 0, len(containers))
+
+	for _, c := range containers {
+		info := ContainerInfo{
+			ID:     c.ID[:12], // Use short ID (first 12 chars)
+			Image:  c.Image,
+			Status: c.Status,
+			Labels: c.Labels,
+		}
+
+		// Extract container name (remove leading slash)
+		if len(c.Names) > 0 {
+			info.Name = c.Names[0]
+			if len(info.Name) > 0 && info.Name[0] == '/' {
+				info.Name = info.Name[1:] // Remove the leading slash
+			}
+		}
+
+		// Format port mappings
+		info.Ports = formatPorts(c.Ports)
+
+		result = append(result, info)
+	}
+
+	return result
+}
+
+// formatPorts converts Docker port bindings to human-readable strings
+func formatPorts(ports []container.Port) []string {
+	if len(ports) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(ports))
+	for _, p := range ports {
+		if p.PublicPort > 0 {
+			portStr := fmt.Sprintf("%d:%d/%s", p.PublicPort, p.PrivatePort, p.Type)
+			result = append(result, portStr)
+		}
+	}
+
+	return result
+}
+
+// ============================================================================
+// Utility Converters
+// ============================================================================
+
 // convertEnvMapToSlice converts an environment map to Docker's env slice format
 // Docker expects: ["KEY=VALUE", "KEY2=VALUE2"]
 func convertEnvMapToSlice(envMap map[string]string) []string {
@@ -183,55 +348,4 @@ func convertPortsToBindings(ports map[string]string) nat.PortMap {
 		}
 	}
 	return bindings
-}
-
-// Stop stops a running Docker container
-func (c *Client) Stop(ctx context.Context, containerID string) error {
-	if containerID == "" {
-		return fmt.Errorf("container ID cannot be empty")
-	}
-
-	// Stop the container (with a 10-second timeout for graceful shutdown)
-	timeout := 10
-	stopOptions := container.StopOptions{
-		Timeout: &timeout,
-	}
-
-	if err := c.cli.ContainerStop(ctx, containerID, stopOptions); err != nil {
-		return fmt.Errorf("failed to stop container %s: %w", containerID, err)
-	}
-
-	return nil
-}
-
-// Remove removes a Docker container (must be stopped first)
-func (c *Client) Remove(ctx context.Context, containerID string) error {
-	if containerID == "" {
-		return fmt.Errorf("container ID cannot be empty")
-	}
-
-	removeOptions := container.RemoveOptions{
-		Force: false, // Don't force-remove running containers
-	}
-
-	if err := c.cli.ContainerRemove(ctx, containerID, removeOptions); err != nil {
-		return fmt.Errorf("failed to remove container %s: %w", containerID, err)
-	}
-
-	return nil
-}
-
-// StopAndRemove stops and removes a Docker container
-func (c *Client) StopAndRemove(ctx context.Context, containerID string) error {
-	// Stop first
-	if err := c.Stop(ctx, containerID); err != nil {
-		return err
-	}
-
-	// Then remove
-	if err := c.Remove(ctx, containerID); err != nil {
-		return err
-	}
-
-	return nil
 }
