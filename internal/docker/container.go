@@ -37,6 +37,13 @@ type ContainerInfo struct {
 	Labels map[string]string // Container labels
 }
 
+// LogsOptions contains configuration for retrieving container logs
+type LogsOptions struct {
+	Follow     bool   // Stream logs continuously (like tail -f)
+	Tail       string // Number of lines to show from the end ("all" or "100")
+	Timestamps bool   // Show timestamps in log output
+}
+
 // ============================================================================
 // Public Methods - Container Lifecycle
 // ============================================================================
@@ -138,6 +145,48 @@ func (c *Client) List(ctx context.Context, projectName string) ([]ContainerInfo,
 
 	// Convert to our ContainerInfo format
 	return convertToContainerInfo(containers), nil
+}
+
+// ============================================================================
+// Public Methods - Container Logs
+// ============================================================================
+
+// Logs retrieves and streams container logs to stdout
+// This is useful for debugging and monitoring container output
+func (c *Client) Logs(ctx context.Context, containerID string, opts LogsOptions) error {
+	// Validate input
+	if containerID == "" {
+		return fmt.Errorf("container ID cannot be empty")
+	}
+
+	// Build Docker API log options
+	logOptions := container.LogsOptions{
+		ShowStdout: true,            // Include stdout
+		ShowStderr: true,            // Include stderr
+		Follow:     opts.Follow,     // Stream continuously if requested
+		Timestamps: opts.Timestamps, // Show timestamps if requested
+		Tail:       opts.Tail,       // Limit output if specified
+	}
+
+	// Get logs reader from Docker
+	reader, err := c.cli.ContainerLogs(ctx, containerID, logOptions)
+	if err != nil {
+		return fmt.Errorf("failed to get logs for container %s: %w\n💡 Check if container exists with 'ork ps'", containerID, err)
+	}
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			fmt.Printf("⚠️  Warning: failed to close logs reader: %v\n", closeErr)
+		}
+	}()
+
+	// Stream logs to stdout
+	// Docker multiplexes stdout/stderr into the reader, so we just copy it all
+	_, err = io.Copy(os.Stdout, reader)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to stream logs: %w", err)
+	}
+
+	return nil
 }
 
 // ============================================================================

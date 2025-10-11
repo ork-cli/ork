@@ -18,12 +18,12 @@ var downCmd = &cobra.Command{
 	Short: "Stop services",
 	Long: `Stop one or more services managed by Ork.
 
-If no services are specified, stops all services for the current project.
-By default, stopped containers are removed to keep your system clean.`,
+	If no services are specified, stops all services for the current project.
+	By default, stopped containers are removed to keep your system clean.`,
 	Example: `  ork down                     Stop all services in current project
-  ork down redis               Stop specific service
-  ork down redis postgres      Stop multiple services
-  ork down --keep              Stop but keep containers for debugging`,
+  	ork down redis               Stop specific service
+  	ork down redis postgres      Stop multiple services
+  	ork down --keep              Stop but keep containers for debugging`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -50,13 +50,13 @@ func init() {
 
 // runDown stops (and optionally removes) Ork-managed containers
 func runDown(serviceNames []string, keepContainers bool) error {
-	// Load configuration to get project name
+	// Load configuration to get the project name
 	cfg, err := loadConfigForDown()
 	if err != nil {
 		return err
 	}
 
-	// Create Docker client
+	// Create a Docker client
 	dockerClient, err := createDockerClientForDown()
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func filterContainersByService(containers []docker.ContainerInfo, serviceNames [
 		return containers
 	}
 
-	// Create a set of requested service names for quick lookup
+	// Create a set of requested service names for a quick lookup
 	serviceSet := make(map[string]bool)
 	for _, name := range serviceNames {
 		serviceSet[name] = true

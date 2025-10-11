@@ -19,10 +19,10 @@ var psCmd = &cobra.Command{
 	Short: "List running services",
 	Long: `List all services managed by Ork for the current project.
 
-Shows container status, ports, and other information for all services
-defined in your ork.yml configuration file.`,
+	Shows container status, ports, and other information for all services
+	defined in your ork.yml configuration file.`,
 	Example: `  ork ps                       List all services in current project
-  ork ps --all                 Include stopped containers`,
+  	ork ps --all                 Include stopped containers`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -49,13 +49,13 @@ func init() {
 
 // runPS lists all Ork-managed containers for the current project
 func runPS(showAll bool) error {
-	// Load configuration to get project name
+	// Load configuration to get the project name
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
-	// Create Docker client
+	// Create a Docker client
 	dockerClient, err := createDockerClientForPS()
 	if err != nil {
 		return err
