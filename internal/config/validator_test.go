@@ -152,7 +152,7 @@ func TestValidateServiceSource_AllThreeSources(t *testing.T) {
 	}
 }
 
-// TestValidateServiceSource_ValidGit tests that git-only source is valid
+// TestValidateServiceSource_ValidGit tests that a git-only source is valid
 func TestValidateServiceSource_ValidGit(t *testing.T) {
 	service := Service{
 		Git: "github.com/org/repo",
@@ -164,7 +164,7 @@ func TestValidateServiceSource_ValidGit(t *testing.T) {
 	}
 }
 
-// TestValidateServiceSource_ValidImage tests that image-only source is valid
+// TestValidateServiceSource_ValidImage tests that an image-only source is valid
 func TestValidateServiceSource_ValidImage(t *testing.T) {
 	service := Service{
 		Image: "nginx:alpine",
@@ -176,7 +176,7 @@ func TestValidateServiceSource_ValidImage(t *testing.T) {
 	}
 }
 
-// TestValidateServiceSource_ValidBuild tests that build-only source is valid
+// TestValidateServiceSource_ValidBuild tests that a build-only source is valid
 func TestValidateServiceSource_ValidBuild(t *testing.T) {
 	service := Service{
 		Build: &Build{
@@ -291,7 +291,7 @@ func TestValidateBuildConfig_NoBuildSection(t *testing.T) {
 	}
 }
 
-// TestValidateDependencies_UnknownService tests reference to unknown service fails
+// TestValidateDependencies_UnknownService tests reference to an unknown service fails
 func TestValidateDependencies_UnknownService(t *testing.T) {
 	allServices := map[string]Service{
 		"api": {Image: "node:18"},
