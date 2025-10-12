@@ -13,6 +13,14 @@ import (
 )
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+const (
+	errContainerIDEmpty = "container ID cannot be empty"
+)
+
+// ============================================================================
 // Type Definitions
 // ============================================================================
 
@@ -77,7 +85,7 @@ func (c *Client) Run(ctx context.Context, opts RunOptions) (containerID string, 
 // Stop stops a running Docker container
 func (c *Client) Stop(ctx context.Context, containerID string) error {
 	if containerID == "" {
-		return fmt.Errorf("container ID cannot be empty")
+		return fmt.Errorf(errContainerIDEmpty)
 	}
 
 	// Stop the container (with a 10-second timeout for graceful shutdown)
@@ -96,7 +104,7 @@ func (c *Client) Stop(ctx context.Context, containerID string) error {
 // Remove removes a Docker container (must be stopped first)
 func (c *Client) Remove(ctx context.Context, containerID string) error {
 	if containerID == "" {
-		return fmt.Errorf("container ID cannot be empty")
+		return fmt.Errorf(errContainerIDEmpty)
 	}
 
 	removeOptions := container.RemoveOptions{
@@ -156,7 +164,7 @@ func (c *Client) List(ctx context.Context, projectName string) ([]ContainerInfo,
 func (c *Client) Logs(ctx context.Context, containerID string, opts LogsOptions) error {
 	// Validate input
 	if containerID == "" {
-		return fmt.Errorf("container ID cannot be empty")
+		return fmt.Errorf(errContainerIDEmpty)
 	}
 
 	// Build Docker API log options
@@ -168,7 +176,7 @@ func (c *Client) Logs(ctx context.Context, containerID string, opts LogsOptions)
 		Tail:       opts.Tail,       // Limit output if specified
 	}
 
-	// Get logs reader from Docker
+	// Get log reader from Docker
 	reader, err := c.cli.ContainerLogs(ctx, containerID, logOptions)
 	if err != nil {
 		return fmt.Errorf("failed to get logs for container %s: %w\n💡 Check if container exists with 'ork ps'", containerID, err)

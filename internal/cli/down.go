@@ -98,6 +98,17 @@ func runDown(serviceNames []string, keepContainers bool) error {
 	}
 
 	fmt.Printf("✅ Successfully stopped %d service(s)\n", len(containersToStop))
+
+	// Clean up the network if we stopped all services
+	if len(serviceNames) == 0 && len(containersToStop) == len(containers) {
+		// All services have been stopped, remove the network
+		if err := dockerClient.DeleteNetwork(ctx, cfg.Project); err != nil {
+			fmt.Printf("⚠️  Warning: failed to remove network: %v\n", err)
+		} else {
+			fmt.Printf("🌐 Removed network: ork-%s-network\n", cfg.Project)
+		}
+	}
+
 	return nil
 }
 

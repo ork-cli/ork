@@ -27,12 +27,24 @@ services:
       - postgres
       - redis
     env:
-      DATABASE_URL: postgres://postgres:test@postgres:5432/webapp
-      REDIS_URL: redis://redis:6379
+      # Database connection details
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: test
+      DB_NAME: webapp
+      # Variable interpolation examples
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+      # Redis connection with default values
+      REDIS_HOST: redis
+      REDIS_URL: redis://${REDIS_HOST}:${REDIS_PORT:-6379}
+      # API configuration
+      API_PORT: "8080"
+      API_BASE_URL: http://localhost:${API_PORT}
     health:
-      endpoint: /health
-      interval: 10s
-      timeout: 5s
+      endpoint: /
+      interval: 5s
+      timeout: 3s
       retries: 3
 
   # Postgres database
@@ -43,19 +55,11 @@ services:
     env:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: webapp
-    health:
-      endpoint: /
-      interval: 5s
-      timeout: 3s
-      retries: 5
+    # No health check - database doesn't expose HTTP endpoint
 
   # Redis cache
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    health:
-      endpoint: /
-      interval: 5s
-      timeout: 3s
-      retries: 3
+    # No health check - redis doesn't expose an HTTP endpoint
