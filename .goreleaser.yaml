@@ -1,0 +1,132 @@
+# GoReleaser configuration
+# Documentation: https://goreleaser.com
+
+version: 2
+
+before:
+  hooks:
+    # Ensure go.mod is tidy
+    - go mod tidy
+    # Run tests before building
+    - go test ./...
+
+builds:
+  - id: ork
+    main: ./cmd/ork
+    binary: ork
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      # Windows ARM is rare
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: ork
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+brews:
+  - repository:
+      owner: ork-cli
+      name: homebrew-tap
+    description: "Orchestrate your microservices with simplicity and power"
+    homepage: https://github.com/ork-cli/ork
+    license: Apache-2.0
+    test: |
+      system "#{bin}/ork --version"
+    install: |
+      bin.install "ork"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - 'merge conflict'
+      - 'Merge pull request'
+      - 'Merge remote-tracking branch'
+      - 'Merge branch'
+  groups:
+    - title: 'New Features'
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 2
+    - title: 'Documentation'
+      regexp: '^.*?docs(\(.+\))??!?:.+$'
+      order: 3
+    - title: 'Dependency Updates'
+      regexp: '^.*?(deps|build)(\(.+\))??!?:.+$'
+      order: 4
+    - title: 'Other Changes'
+      order: 999
+
+release:
+  github:
+    owner: ork-cli
+    name: ork
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Ork {{ .Tag }} Release 🚀
+
+    ### Installation
+
+    **macOS/Linux:**
+    ```bash
+    curl -sSL https://raw.githubusercontent.com/ork-cli/ork/main/install.sh | sh
+    ```
+
+    **With Go:**
+    ```bash
+    go install github.com/ork-cli/ork@{{ .Tag }}
+    ```
+
+    **Or download binaries below for your platform.**
+  footer: |
+    ---
+    **Full Changelog**: https://github.com/ork-cli/ork/compare/{{ .PreviousTag }}...{{ .Tag }}

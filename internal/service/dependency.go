@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/hary-singh/ork/internal/config"
+	"github.com/ork-cli/ork/internal/config"
 )
 
 // ============================================================================

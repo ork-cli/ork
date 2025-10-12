@@ -1,4 +1,4 @@
-module github.com/hary-singh/ork
+module github.com/ork-cli/ork
 
 go 1.25.2
 

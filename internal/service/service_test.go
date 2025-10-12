@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hary-singh/ork/internal/config"
+	"github.com/ork-cli/ork/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 

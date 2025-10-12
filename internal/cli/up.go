@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hary-singh/ork/internal/config"
-	"github.com/hary-singh/ork/internal/docker"
-	"github.com/hary-singh/ork/internal/service"
+	"github.com/ork-cli/ork/internal/config"
+	"github.com/ork-cli/ork/internal/docker"
+	"github.com/ork-cli/ork/internal/service"
 	"github.com/spf13/cobra"
 )
 
