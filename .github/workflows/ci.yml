@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: |
+          set -o pipefail  # Ensure pipeline fails if any command fails
+          echo "=========================================="
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "Running tests with race detector (PR mode)..."
+            TEST_FLAGS="-race -covermode=atomic"
+          else
+            echo "Running tests (fast mode)..."
+            TEST_FLAGS=""
+          fi
+          echo "=========================================="
+          if go test -v $TEST_FLAGS -coverprofile=coverage.out ./... 2>&1 | tee test-output.log; then
+            echo ""
+            echo "=========================================="
+            echo "✅ ALL TESTS PASSED"
+            echo "=========================================="
+            echo ""
+            echo "Coverage:"
+            go tool cover -func=coverage.out | tail -n 1
+          else
+            TEST_EXIT_CODE=$?
+            echo ""
+            echo "=========================================="
+            echo "❌ TESTS FAILED"
+            echo "=========================================="
+            echo ""
+            echo "Failed tests summary:"
+            grep -E "^(FAIL|--- FAIL:|DATA RACE)" test-output.log || echo "See full output above for details"
+            exit $TEST_EXIT_CODE
+          fi
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build
+        run: go build -v ./cmd/ork
+
+      - name: Verify binary
+        run: ./ork --help

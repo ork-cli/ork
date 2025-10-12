@@ -16,6 +16,7 @@ import (
 
 // Orchestrator manages the lifecycle of multiple services with parallel execution
 type Orchestrator struct {
+	mu           sync.RWMutex        // Protects concurrent access to the services' map
 	services     map[string]*Service // Map of service name -> Service instance
 	dockerClient *docker.Client      // Docker client for operations
 	projectName  string              // Project name
@@ -34,11 +35,15 @@ func NewOrchestrator(projectName string, dockerClient *docker.Client, networkID 
 
 // AddService adds a service to the orchestrator
 func (o *Orchestrator) AddService(name string, cfg config.Service) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.services[name] = New(name, o.projectName, cfg)
 }
 
 // GetService returns a service by name
 func (o *Orchestrator) GetService(name string) (*Service, bool) {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
 	svc, ok := o.services[name]
 	return svc, ok
 }
@@ -183,8 +188,8 @@ func (o *Orchestrator) startServicesInParallel(ctx context.Context, serviceNames
 		go func(serviceName string) {
 			defer wg.Done()
 
-			// Get the service
-			svc, ok := o.services[serviceName]
+			// Get the service (thread-safe via GetService)
+			svc, ok := o.GetService(serviceName)
 			if !ok {
 				errChan <- fmt.Errorf("service %s not found in orchestrator", serviceName)
 				return
@@ -234,7 +239,7 @@ func (o *Orchestrator) waitForHealthy(ctx context.Context, serviceNames []string
 	// Check if any services have health checks configured
 	hasHealthChecks := false
 	for _, name := range serviceNames {
-		svc, ok := o.services[name]
+		svc, ok := o.GetService(name)
 		if ok && svc.Config.Health != nil {
 			hasHealthChecks = true
 			break
@@ -253,7 +258,7 @@ func (o *Orchestrator) waitForHealthy(ctx context.Context, serviceNames []string
 	errChan := make(chan error, len(serviceNames))
 
 	for _, name := range serviceNames {
-		svc, ok := o.services[name]
+		svc, ok := o.GetService(name)
 		if !ok {
 			continue
 		}
@@ -360,11 +365,19 @@ func (o *Orchestrator) rollbackStartedServices(ctx context.Context, startedServi
 
 // StopAll stops all services managed by the orchestrator
 func (o *Orchestrator) StopAll(ctx context.Context) error {
+	// Copy services to a slice while holding the lock
+	o.mu.RLock()
+	services := make([]*Service, 0, len(o.services))
+	for _, svc := range o.services {
+		services = append(services, svc)
+	}
+	o.mu.RUnlock()
+
 	var wg sync.WaitGroup
-	errChan := make(chan error, len(o.services))
+	errChan := make(chan error, len(services))
 
 	// Stop all services in parallel
-	for _, svc := range o.services {
+	for _, svc := range services {
 		if !svc.IsRunning() {
 			continue
 		}
