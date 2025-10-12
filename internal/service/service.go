@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hary-singh/ork/internal/config"
-	"github.com/hary-singh/ork/internal/docker"
+	"github.com/ork-cli/ork/internal/config"
+	"github.com/ork-cli/ork/internal/docker"
 )
 
 // ============================================================================

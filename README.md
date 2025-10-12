@@ -47,3 +47,13 @@ Ork is built with carefully selected Go libraries:
 | [go-yaml](https://github.com/go-yaml/yaml)            | YAML parsing      | Parse `ork.yml` configuration files           |
 | [go-git](https://github.com/go-git/go-git)            | Git operations    | Pure Go git implementation                    |
 
+## Author
+
+Created by [Harry Dhillon](https://github.com/hary-singh) • [ork-cli organization](https://github.com/ork-cli)
+
+## License
+
+Apache 2.0 - see [LICENSE](LICENSE) file for details.
+
+This project is licensed under the Apache License 2.0, which means you are free to use, modify, and distribute this
+software. See the LICENSE file for the full terms.

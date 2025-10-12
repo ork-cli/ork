@@ -3,8 +3,18 @@ name: CI
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/**'
   pull_request:
     branches: [ main ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/**'
 
 permissions:
   contents: read
@@ -46,6 +56,7 @@ jobs:
             echo "Running tests (fast mode)..."
             TEST_FLAGS=""
           fi
+          echo "Command: go test -v $TEST_FLAGS -coverprofile=coverage.out ./..."
           echo "=========================================="
           if go test -v $TEST_FLAGS -coverprofile=coverage.out ./... 2>&1 | tee test-output.log; then
             echo ""
