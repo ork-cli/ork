@@ -68,6 +68,7 @@ homebrew_casks:
     repository:
       owner: ork-cli
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     description: "Orchestrate your microservices with simplicity and power"
     homepage: https://github.com/ork-cli/ork
     license: Apache-2.0
