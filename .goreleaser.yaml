@@ -40,7 +40,8 @@ builds:
 
 archives:
   - id: ork
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -51,7 +52,8 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - README.md
       - LICENSE*
@@ -60,17 +62,15 @@ checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: ork
+    binary: ork
+    repository:
       owner: ork-cli
       name: homebrew-tap
     description: "Orchestrate your microservices with simplicity and power"
     homepage: https://github.com/ork-cli/ork
     license: Apache-2.0
-    test: |
-      system "#{bin}/ork --version"
-    install: |
-      bin.install "ork"
 
 changelog:
   use: github
