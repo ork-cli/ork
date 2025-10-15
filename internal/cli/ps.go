@@ -7,6 +7,8 @@ import (
 
 	"github.com/ork-cli/ork/internal/config"
 	"github.com/ork-cli/ork/internal/docker"
+	"github.com/ork-cli/ork/internal/ui"
+	"github.com/ork-cli/ork/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +31,7 @@ var psCmd = &cobra.Command{
 		showAll, _ := cmd.Flags().GetBool("all")
 
 		if err := runPS(showAll); err != nil {
-			fmt.Printf("❌ Error: %v\n", err)
+			handlePSError(err)
 			return
 		}
 	},
@@ -70,7 +72,12 @@ func runPS(showAll bool) error {
 	ctx := context.Background()
 	containers, err := dockerClient.List(ctx, cfg.Project)
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return utils.DockerError(
+			"ps.list",
+			"Failed to list containers",
+			"Try running 'ork doctor' to diagnose issues",
+			err,
+		)
 	}
 
 	// Filter out stopped containers if --all not specified
@@ -92,7 +99,12 @@ func runPS(showAll bool) error {
 func loadConfig() (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w\n💡 Make sure ork.yml exists in current directory", err)
+		return nil, utils.ConfigError(
+			"ps.load",
+			"Failed to load configuration",
+			"Make sure ork.yml exists in current directory",
+			err,
+		)
 	}
 	return cfg, nil
 }
@@ -105,7 +117,12 @@ func loadConfig() (*config.Config, error) {
 func createDockerClientForPS() (*docker.Client, error) {
 	client, err := docker.NewClient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+		return nil, utils.DockerError(
+			"ps.docker",
+			"Failed to connect to Docker",
+			"Make sure Docker is running with 'docker ps' or run 'ork doctor'",
+			err,
+		)
 	}
 	return client, nil
 }
@@ -132,34 +149,27 @@ func filterRunningContainers(containers []docker.ContainerInfo) []docker.Contain
 // Private Helpers - Display
 // ============================================================================
 
-// displayContainers prints containers in a nice table format
+// displayContainers prints containers in a beautiful table format
 func displayContainers(containers []docker.ContainerInfo, projectName string) {
-	if len(containers) == 0 {
-		fmt.Printf("No containers found for project '%s'\n", projectName)
-		fmt.Printf("💡 Start services with: ork up <service>\n")
-		return
-	}
-
-	// Print header
-	fmt.Printf("Services for project: %s\n\n", projectName)
-	fmt.Printf("%-20s %-15s %-30s %-20s\n", "SERVICE", "STATUS", "PORTS", "CONTAINER ID")
-	fmt.Printf("%s\n", strings.Repeat("-", 85))
-
-	// Print each container
+	// Convert containers to table rows
+	var rows []ui.ServiceRow
 	for _, c := range containers {
 		serviceName := extractServiceName(c.Labels)
-		status := formatStatus(c.Status)
-		ports := formatPortsList(c.Ports)
+		status := normalizeStatus(c.Status)
+		uptime := extractUptime(c.Status)
 
-		fmt.Printf("%-20s %-15s %-30s %-20s\n",
-			serviceName,
-			status,
-			ports,
-			c.ID,
-		)
+		rows = append(rows, ui.ServiceRow{
+			Service:     serviceName,
+			Status:      status,
+			Ports:       c.Ports,
+			ContainerID: c.ID,
+			Uptime:      uptime,
+		})
 	}
 
-	fmt.Printf("\n")
+	// Render beautiful table
+	table := ui.ServiceTable(projectName, rows)
+	fmt.Print(table)
 }
 
 // extractServiceName gets the service name from labels
@@ -170,24 +180,49 @@ func extractServiceName(labels map[string]string) string {
 	return "unknown"
 }
 
-// formatStatus formats the container status with color indicators
-func formatStatus(status string) string {
+// normalizeStatus converts Docker status to our normalized format
+func normalizeStatus(status string) string {
 	if strings.HasPrefix(status, "Up") {
-		return "🟢 " + status
+		return "running"
+	} else if strings.HasPrefix(status, "Exited") {
+		return "stopped"
+	} else if strings.Contains(strings.ToLower(status), "restarting") {
+		return "starting"
 	}
-	return "🔴 " + status
+	return "stopped"
 }
 
-// formatPortsList formats the port list for display
-func formatPortsList(ports []string) string {
-	if len(ports) == 0 {
-		return "-"
+// extractUptime extracts uptime from Docker status string
+func extractUptime(status string) string {
+	// Docker status format: "Up 2 hours" or "Up 5 minutes" or "Exited (0) 2 hours ago"
+	if strings.HasPrefix(status, "Up ") {
+		// Extract the time portion
+		uptime := strings.TrimPrefix(status, "Up ")
+		// Clean up any parenthetical info
+		if idx := strings.Index(uptime, "("); idx != -1 {
+			uptime = strings.TrimSpace(uptime[:idx])
+		}
+		return uptime
 	}
+	return ""
+}
 
-	// If there are many ports, just show the first few
-	if len(ports) > 2 {
-		return strings.Join(ports[:2], ", ") + "..."
+// handlePSError formats and displays errors with hints
+func handlePSError(err error) {
+	if orkErr, ok := err.(*utils.OrkError); ok {
+		// Display structured error with hints
+		ui.Error(orkErr.Message)
+		if orkErr.Hint != "" {
+			ui.Hint(orkErr.Hint)
+		}
+		if len(orkErr.Details) > 0 {
+			ui.EmptyLine()
+			for _, detail := range orkErr.Details {
+				ui.List(detail)
+			}
+		}
+	} else {
+		// Fallback for non-Ork errors
+		ui.Error(fmt.Sprintf("Error: %v", err))
 	}
-
-	return strings.Join(ports, ", ")
 }
