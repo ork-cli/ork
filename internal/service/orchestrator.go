@@ -8,6 +8,7 @@ import (
 
 	"github.com/ork-cli/ork/internal/config"
 	"github.com/ork-cli/ork/internal/docker"
+	"github.com/ork-cli/ork/internal/ui"
 )
 
 // ============================================================================
@@ -67,12 +68,12 @@ func (o *Orchestrator) StartServicesInOrder(ctx context.Context, orderedServiceN
 
 	// Start services level by level
 	for levelNum, levelServices := range levels {
-		fmt.Printf("📦 Starting level %d: %v\n", levelNum+1, levelServices)
+		ui.Subheader(fmt.Sprintf("Level %d: %s", levelNum+1, ui.Dim(fmt.Sprintf("%v", levelServices))))
 
 		// Start all services in this level in parallel
 		if err := o.startServicesInParallel(ctx, levelServices, &startedServices); err != nil {
 			// Rollback on failure
-			fmt.Printf("❌ Failed to start services: %v\n", err)
+			ui.Error(fmt.Sprintf("Failed to start services: %v", err))
 			o.rollbackStartedServices(ctx, startedServices)
 			return err
 		}
@@ -80,7 +81,7 @@ func (o *Orchestrator) StartServicesInOrder(ctx context.Context, orderedServiceN
 		// Wait for all services in this level to become healthy
 		if err := o.waitForHealthy(ctx, levelServices); err != nil {
 			// Rollback on health check failure
-			fmt.Printf("❌ Health check failed: %v\n", err)
+			ui.Error(fmt.Sprintf("Health check failed: %v", err))
 			o.rollbackStartedServices(ctx, startedServices)
 			return err
 		}
@@ -179,7 +180,7 @@ func (o *Orchestrator) calculateServiceLevel(serviceName string, graph map[strin
 func (o *Orchestrator) startServicesInParallel(ctx context.Context, serviceNames []string, startedServices *[]*Service) error {
 	// Use a wait group to track parallel starts
 	var wg sync.WaitGroup
-	var mu sync.Mutex // Protects concurrent access to startedServices slice
+	var mu sync.Mutex // Protects concurrent access to the startedServices slice
 	errChan := make(chan error, len(serviceNames))
 
 	// Start each service in a separate goroutine
@@ -195,14 +196,19 @@ func (o *Orchestrator) startServicesInParallel(ctx context.Context, serviceNames
 				return
 			}
 
-			// Start the service
-			fmt.Printf("🐳 Starting %s...\n", serviceName)
+			// Start the service with a spinner
+			spinner := ui.ShowSpinner(fmt.Sprintf("Starting %s", ui.Bold(serviceName)))
 			if err := svc.Start(ctx, o.dockerClient, o.networkID); err != nil {
+				spinner.Error(fmt.Sprintf("Failed to start %s", serviceName))
 				errChan <- fmt.Errorf("failed to start %s: %w", serviceName, err)
 				return
 			}
 
-			fmt.Printf("✅ Started %s (container: %s)\n", serviceName, svc.GetContainerID()[:12])
+			containerID := svc.GetContainerID()
+			if len(containerID) > 12 {
+				containerID = containerID[:12]
+			}
+			spinner.Success(fmt.Sprintf("Started %s %s", ui.Bold(serviceName), ui.Dim(containerID)))
 
 			// Track successfully started service (protected by mutex)
 			mu.Lock()
@@ -251,7 +257,7 @@ func (o *Orchestrator) waitForHealthy(ctx context.Context, serviceNames []string
 		return nil
 	}
 
-	fmt.Printf("🏥 Waiting for services to become healthy...\n")
+	ui.Info(fmt.Sprintf("%s Waiting for health checks...", ui.SymbolDoctor))
 
 	// Wait for each service with a health check
 	var wg sync.WaitGroup
@@ -278,7 +284,7 @@ func (o *Orchestrator) waitForHealthy(ctx context.Context, serviceNames []string
 				return
 			}
 
-			fmt.Printf("✅ %s is healthy\n", service.Name)
+			ui.Success(fmt.Sprintf("%s is healthy", service.Name))
 		}(svc)
 	}
 
@@ -344,17 +350,18 @@ func (o *Orchestrator) rollbackStartedServices(ctx context.Context, startedServi
 		return
 	}
 
-	fmt.Printf("🔄 Rolling back %d started service(s)...\n", len(startedServices))
+	ui.EmptyLine()
+	ui.Warning(fmt.Sprintf("Rolling back %d started service(s)...", len(startedServices)))
 
 	// Stop services in reverse order
 	for i := len(startedServices) - 1; i >= 0; i-- {
 		svc := startedServices[i]
-		fmt.Printf("🛑 Rolling back %s...\n", svc.Name)
+		spinner := ui.ShowSpinner(fmt.Sprintf("Rolling back %s", svc.Name))
 
 		if err := svc.Stop(ctx, o.dockerClient); err != nil {
-			fmt.Printf("⚠️  Warning: failed to rollback %s: %v\n", svc.Name, err)
+			spinner.Warning(fmt.Sprintf("Failed to rollback %s: %v", svc.Name, err))
 		} else {
-			fmt.Printf("✅ Rolled back %s\n", svc.Name)
+			spinner.Success(fmt.Sprintf("Rolled back %s", svc.Name))
 		}
 	}
 }
@@ -386,12 +393,13 @@ func (o *Orchestrator) StopAll(ctx context.Context) error {
 		go func(service *Service) {
 			defer wg.Done()
 
-			fmt.Printf("🛑 Stopping %s...\n", service.Name)
+			spinner := ui.ShowSpinner(fmt.Sprintf("Stopping %s", service.Name))
 			if err := service.Stop(ctx, o.dockerClient); err != nil {
+				spinner.Error(fmt.Sprintf("Failed to stop %s", service.Name))
 				errChan <- fmt.Errorf("failed to stop %s: %w", service.Name, err)
 				return
 			}
-			fmt.Printf("✅ Stopped %s\n", service.Name)
+			spinner.Success(fmt.Sprintf("Stopped %s", service.Name))
 		}(svc)
 	}
 
