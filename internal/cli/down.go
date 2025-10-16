@@ -6,6 +6,8 @@ import (
 
 	"github.com/ork-cli/ork/internal/config"
 	"github.com/ork-cli/ork/internal/docker"
+	"github.com/ork-cli/ork/internal/ui"
+	"github.com/ork-cli/ork/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +32,7 @@ var downCmd = &cobra.Command{
 		keepContainers, _ := cmd.Flags().GetBool("keep")
 
 		if err := runDown(args, keepContainers); err != nil {
-			fmt.Printf("❌ Error: %v\n", err)
+			handleDownError(err)
 			return
 		}
 	},
@@ -63,7 +65,7 @@ func runDown(serviceNames []string, keepContainers bool) error {
 	}
 	defer func() {
 		if closeErr := dockerClient.Close(); closeErr != nil {
-			fmt.Printf("❌ Error closing Docker client: %v\n", closeErr)
+			ui.Warning(fmt.Sprintf("Failed to close Docker client: %v", closeErr))
 		}
 	}()
 
@@ -71,11 +73,16 @@ func runDown(serviceNames []string, keepContainers bool) error {
 	ctx := context.Background()
 	containers, err := dockerClient.List(ctx, cfg.Project)
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return utils.DockerError(
+			"down.list",
+			"Failed to list containers",
+			"Try running 'ork doctor' to diagnose issues",
+			err,
+		)
 	}
 
 	if len(containers) == 0 {
-		fmt.Printf("No services running for project '%s'\n", cfg.Project)
+		ui.Info(fmt.Sprintf("No services running for project: %s", ui.Bold(cfg.Project)))
 		return nil
 	}
 
@@ -84,31 +91,37 @@ func runDown(serviceNames []string, keepContainers bool) error {
 
 	if len(containersToStop) == 0 {
 		if len(serviceNames) > 0 {
-			fmt.Printf("No matching services found: %v\n", serviceNames)
-			fmt.Printf("💡 Use 'ork ps' to see running services\n")
+			ui.Warning(fmt.Sprintf("No matching services found: %v", serviceNames))
+			ui.Hint("Use 'ork ps' to see running services")
 		} else {
-			fmt.Printf("No services running for project '%s'\n", cfg.Project)
+			ui.Info(fmt.Sprintf("No services running for project: %s", ui.Bold(cfg.Project)))
 		}
 		return nil
 	}
+
+	// Show what we're stopping
+	ui.EmptyLine()
+	ui.Info(fmt.Sprintf("Stopping %d service(s) for project: %s", len(containersToStop), ui.Bold(cfg.Project)))
+	ui.EmptyLine()
 
 	// Stop (and optionally remove) containers
 	if err := stopContainers(ctx, dockerClient, containersToStop, keepContainers); err != nil {
 		return err
 	}
 
-	fmt.Printf("✅ Successfully stopped %d service(s)\n", len(containersToStop))
-
 	// Clean up the network if we stopped all services
 	if len(serviceNames) == 0 && len(containersToStop) == len(containers) {
 		// All services have been stopped, remove the network
+		spinner := ui.ShowSpinner("Cleaning up project network...")
 		if err := dockerClient.DeleteNetwork(ctx, cfg.Project); err != nil {
-			fmt.Printf("⚠️  Warning: failed to remove network: %v\n", err)
+			spinner.Warning(fmt.Sprintf("Failed to remove network: %v", err))
 		} else {
-			fmt.Printf("🌐 Removed network: ork-%s-network\n", cfg.Project)
+			spinner.Success(fmt.Sprintf("Removed network: ork-%s-network", cfg.Project))
 		}
 	}
 
+	ui.EmptyLine()
+	ui.SuccessBox(fmt.Sprintf("Successfully stopped %d service(s)", len(containersToStop)))
 	return nil
 }
 
@@ -120,7 +133,12 @@ func runDown(serviceNames []string, keepContainers bool) error {
 func loadConfigForDown() (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w\n💡 Make sure ork.yml exists in current directory", err)
+		return nil, utils.ConfigError(
+			"down.load",
+			"Failed to load configuration",
+			"Make sure ork.yml exists in the current directory",
+			err,
+		)
 	}
 	return cfg, nil
 }
@@ -133,7 +151,12 @@ func loadConfigForDown() (*config.Config, error) {
 func createDockerClientForDown() (*docker.Client, error) {
 	client, err := docker.NewClient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+		return nil, utils.DockerError(
+			"down.docker",
+			"Failed to connect to Docker",
+			"Make sure Docker is running. Try 'docker ps' or run 'ork doctor'",
+			err,
+		)
 	}
 	return client, nil
 }
@@ -179,22 +202,42 @@ func stopContainers(ctx context.Context, client *docker.Client, containers []doc
 
 		if keepContainers {
 			// Just stop the container
-			fmt.Printf("⏸️  Stopping %s...\n", serviceName)
+			spinner := ui.ShowSpinner(fmt.Sprintf("Stopping %s", ui.Bold(serviceName)))
 			if err := client.Stop(ctx, container.ID); err != nil {
-				fmt.Printf("⚠️  Warning: failed to stop %s: %v\n", serviceName, err)
+				spinner.Warning(fmt.Sprintf("Failed to stop %s: %v", serviceName, err))
 				continue
 			}
-			fmt.Printf("✅ Stopped %s\n", serviceName)
+			spinner.Success(fmt.Sprintf("Stopped %s", ui.Bold(serviceName)))
 		} else {
 			// Stop and remove the container
-			fmt.Printf("🛑 Stopping %s...\n", serviceName)
+			spinner := ui.ShowSpinner(fmt.Sprintf("Stopping %s", ui.Bold(serviceName)))
 			if err := client.StopAndRemove(ctx, container.ID); err != nil {
-				fmt.Printf("⚠️  Warning: failed to stop/remove %s: %v\n", serviceName, err)
+				spinner.Warning(fmt.Sprintf("Failed to stop/remove %s: %v", serviceName, err))
 				continue
 			}
-			fmt.Printf("✅ Stopped and removed %s\n", serviceName)
+			spinner.Success(fmt.Sprintf("Stopped and removed %s", ui.Bold(serviceName)))
 		}
 	}
 
 	return nil
+}
+
+// handleDownError formats and displays errors with hints
+func handleDownError(err error) {
+	if orkErr, ok := err.(*utils.OrkError); ok {
+		// Display structured error with hints
+		ui.Error(orkErr.Message)
+		if orkErr.Hint != "" {
+			ui.Hint(orkErr.Hint)
+		}
+		if len(orkErr.Details) > 0 {
+			ui.EmptyLine()
+			for _, detail := range orkErr.Details {
+				ui.List(detail)
+			}
+		}
+	} else {
+		// Fallback for non-Ork errors
+		ui.Error(fmt.Sprintf("Error: %v", err))
+	}
 }
