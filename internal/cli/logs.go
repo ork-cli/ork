@@ -6,6 +6,7 @@ import (
 
 	"github.com/ork-cli/ork/internal/config"
 	"github.com/ork-cli/ork/internal/docker"
+	"github.com/ork-cli/ork/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -81,16 +82,32 @@ func runLogs(serviceName string, follow bool, tail string, timestamps bool) erro
 		return err
 	}
 
-	// Build log options
+	// Print a beautiful service header
+	header := ui.FormatServiceHeader(serviceName, containerID, follow)
+	fmt.Println(header)
+	ui.EmptyLine()
+
+	// Create a formatter that applies log level coloring
+	logFormatter := func(line string) string {
+		return ui.FormatLogLine(line, timestamps)
+	}
+
+	// Build log options with formatter
 	logOpts := docker.LogsOptions{
 		Follow:     follow,
 		Tail:       tail,
 		Timestamps: timestamps,
+		Formatter:  logFormatter,
 	}
 
 	// Stream logs
 	if err := dockerClient.Logs(ctx, containerID, logOpts); err != nil {
 		return fmt.Errorf("failed to retrieve logs: %w", err)
+	}
+
+	// Show streaming footer if following
+	if follow {
+		fmt.Println(ui.FormatStreamingFooter())
 	}
 
 	return nil

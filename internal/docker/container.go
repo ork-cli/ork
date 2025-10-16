@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 )
 
@@ -47,9 +49,10 @@ type ContainerInfo struct {
 
 // LogsOptions contains configuration for retrieving container logs
 type LogsOptions struct {
-	Follow     bool   // Stream logs continuously (like tail -f)
-	Tail       string // Number of lines to show from the end ("all" or "100")
-	Timestamps bool   // Show timestamps in log output
+	Follow     bool                // Stream logs continuously (like tail -f)
+	Tail       string              // Number of lines to show from the end ("all" or "100")
+	Timestamps bool                // Show timestamps in log output
+	Formatter  func(string) string // Optional: format each log line before output
 }
 
 // ============================================================================
@@ -187,11 +190,53 @@ func (c *Client) Logs(ctx context.Context, containerID string, opts LogsOptions)
 		}
 	}()
 
-	// Stream logs to stdout
-	// Docker multiplexes stdout/stderr into the reader, so we just copy it all
-	_, err = io.Copy(os.Stdout, reader)
-	if err != nil && err != io.EOF {
-		return fmt.Errorf("failed to stream logs: %w", err)
+	// If no formatter is provided, just demultiplex and copy to stdout (legacy behavior)
+	if opts.Formatter == nil {
+		_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, reader)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("failed to stream logs: %w", err)
+		}
+		return nil
+	}
+
+	// With formatter: demultiplex streams and process line by line
+	// Create a pipe to capture the demultiplexed output
+	pr, pw := io.Pipe()
+
+	// Start demultiplexing in a goroutine
+	demuxErr := make(chan error, 1)
+	go func() {
+		_, err := stdcopy.StdCopy(pw, pw, reader)
+		if closeErr := pw.Close(); closeErr != nil && err == nil {
+			// Only report a close error if there wasn't already a demux error
+			err = fmt.Errorf("failed to close pipe writer: %w", closeErr)
+		}
+		demuxErr <- err
+	}()
+
+	// Process demultiplexed output line by line
+	scanner := bufio.NewScanner(pr)
+	// Increase the buffer size for long log lines (default is 64KB, set to 1MB)
+	const maxLogLineLength = 1024 * 1024
+	buf := make([]byte, maxLogLineLength)
+	scanner.Buffer(buf, maxLogLineLength)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Apply formatter and print
+		formattedLine := opts.Formatter(line)
+		fmt.Println(formattedLine)
+	}
+
+	// Check for scanner errors
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read logs: %w", err)
+	}
+
+	// Check for demux errors
+	if err := <-demuxErr; err != nil && err != io.EOF {
+		return fmt.Errorf("failed to demultiplex logs: %w", err)
 	}
 
 	return nil
