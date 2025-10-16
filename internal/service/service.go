@@ -50,13 +50,14 @@ type Service struct {
 	Config      config.Service // Service configuration from ork.yml
 
 	// Runtime state
-	state        State        // Current service state
-	healthStatus HealthStatus // Current health status
-	containerID  string       // Docker container ID (when running)
-	networkID    string       // Network ID the service is connected to
-	startedAt    time.Time    // When the service was started
-	stoppedAt    time.Time    // When the service was stopped
-	lastError    error        // Last error encountered
+	state             State        // Current service state
+	healthStatus      HealthStatus // Current health status
+	containerID       string       // Docker container ID (when running)
+	networkID         string       // Network ID the service is connected to
+	startedAt         time.Time    // When the service was started
+	stoppedAt         time.Time    // When the service was stopped
+	lastError         error        // Last error encountered
+	wasAlreadyRunning bool         // True if the container was found already running (not newly started)
 
 	// Synchronization
 	mu sync.RWMutex // Protects state changes
@@ -95,12 +96,19 @@ func (s *Service) Start(ctx context.Context, client *docker.Client, networkID st
 	s.state = StateStarting
 	s.healthStatus = HealthStarting
 	s.lastError = nil
+	s.wasAlreadyRunning = false // Reset flag - assume we'll start a new container
 
 	// Check if a container already exists
 	if err := s.checkAndCleanupExistingContainer(ctx, client); err != nil {
 		s.state = StateFailed
 		s.lastError = err
 		return err
+	}
+
+	// If the service is already running (discovered by checkAndCleanupExistingContainer),
+	// return success without trying to start a new container
+	if s.state == StateRunning {
+		return nil
 	}
 
 	// Load environment variables
@@ -252,6 +260,13 @@ func (s *Service) IsHealthy() bool {
 	return s.GetHealthStatus() == HealthHealthy
 }
 
+// WasAlreadyRunning returns true if the service was found already running (not newly started)
+func (s *Service) WasAlreadyRunning() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.wasAlreadyRunning
+}
+
 // ============================================================================
 // Health Check Methods
 // ============================================================================
@@ -371,10 +386,13 @@ func (s *Service) checkAndCleanupExistingContainer(ctx context.Context, client *
 		if container.Labels["ork.service"] == s.Name {
 			// Check if it's running
 			if strings.HasPrefix(container.Status, "Up") {
-				// Update our state to match reality
+				// Update our state to match reality - service is already running
 				s.containerID = container.ID
 				s.state = StateRunning
-				return fmt.Errorf("service %s is already running (container: %s)", s.Name, container.ID)
+				s.startedAt = time.Now()   // Approximate start time
+				s.wasAlreadyRunning = true // Mark as already running (not newly started)
+				// Return nil (success) - the service is already in the desired state
+				return nil
 			}
 
 			// Container exists but is stopped - remove it

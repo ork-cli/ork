@@ -208,7 +208,13 @@ func (o *Orchestrator) startServicesInParallel(ctx context.Context, serviceNames
 			if len(containerID) > 12 {
 				containerID = containerID[:12]
 			}
-			spinner.Success(fmt.Sprintf("Started %s %s", ui.Bold(serviceName), ui.Dim(containerID)))
+
+			// Show the appropriate message based on whether it was already running
+			if svc.WasAlreadyRunning() {
+				spinner.Success(fmt.Sprintf("%s already running %s", ui.Bold(serviceName), ui.Dim(containerID)))
+			} else {
+				spinner.Success(fmt.Sprintf("Started %s %s", ui.Bold(serviceName), ui.Dim(containerID)))
+			}
 
 			// Track successfully started service (protected by mutex)
 			mu.Lock()
