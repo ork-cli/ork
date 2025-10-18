@@ -18,14 +18,16 @@ import (
 var downCmd = &cobra.Command{
 	Use:   "down [service...]",
 	Short: "Stop services",
-	Long: `Stop one or more services managed by Ork.
+	Long: `
+Stop one or more services managed by Ork.
 
-	If no services are specified, stops all services for the current project.
-	By default, stopped containers are removed to keep your system clean.`,
-	Example: `  ork down                     Stop all services in current project
-  	ork down redis               Stop specific service
-  	ork down redis postgres      Stop multiple services
-  	ork down --keep              Stop but keep containers for debugging`,
+If no services are specified, stops all services for the current project.
+By default, stopped containers are removed to keep your system clean.`,
+	Example: `
+ork down                     Stop all services in current project
+ork down redis               Stop specific service
+ork down redis postgres      Stop multiple services
+ork down --keep              Stop but keep containers for debugging`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags

@@ -17,14 +17,16 @@ import (
 var logsCmd = &cobra.Command{
 	Use:   "logs <service>",
 	Short: "View logs from a service",
-	Long: `View and stream logs from a running service container.
+	Long: `
+View and stream logs from a running service container.
 
-	By default, shows all available logs. Use --tail to limit output,
-	and --follow to stream logs continuously (like tail -f).`,
-	Example: `  ork logs api                 Show all logs for api service
-  	ork logs api --follow        Stream logs continuously
-  	ork logs api --tail 100      Show last 100 lines
-  	ork logs api --timestamps    Show timestamps in output`,
+By default, shows all available logs. Use --tail to limit output,
+and --follow to stream logs continuously (like tail -f).`,
+	Example: `
+ork logs api                 Show all logs for api service
+ork logs api --follow        Stream logs continuously
+ork logs api --tail 100      Show last 100 lines
+ork logs api --timestamps    Show timestamps in output`,
 
 	Args: cobra.ExactArgs(1), // Require exactly one service name
 	Run: func(cmd *cobra.Command, args []string) {
