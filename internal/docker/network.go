@@ -54,6 +54,13 @@ func (c *Client) CreateNetwork(ctx context.Context, projectName string) (string,
 	return response.ID, nil
 }
 
+// GetNetworkID retrieves the network ID for a project
+// Returns the network ID if it exists, empty string and error if not found
+func (c *Client) GetNetworkID(ctx context.Context, projectName string) (string, error) {
+	networkName := buildNetworkName(projectName)
+	return c.findNetworkByName(ctx, networkName)
+}
+
 // DeleteNetwork removes a Docker network
 func (c *Client) DeleteNetwork(ctx context.Context, projectName string) error {
 	networkName := buildNetworkName(projectName)

@@ -38,9 +38,10 @@ func buildVersionString() string {
 var rootCmd = &cobra.Command{
 	Use:   "ork",
 	Short: "Ork - Microservices orchestration made easy",
-	Long: `Ork is a modern microservices orchestration tool that makes Docker Compose not suck.
+	Long: `
+Ork is a modern microservices orchestration tool that makes Docker Compose not suck.
 
-	Run services from anywhere, intelligently manage dependencies, and enjoy beautiful CLI output.`,
+Run services from anywhere, intelligently manage dependencies, and enjoy beautiful CLI output.`,
 	Version: version,
 }
 

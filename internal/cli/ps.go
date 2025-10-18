@@ -19,12 +19,14 @@ import (
 var psCmd = &cobra.Command{
 	Use:   "ps",
 	Short: "List running services",
-	Long: `List all services managed by Ork for the current project.
+	Long: `
+List all services managed by Ork for the current project.
 
-	Shows container status, ports, and other information for all services
-	defined in your ork.yml configuration file.`,
-	Example: `  ork ps                       List all services in current project
-  	ork ps --all                 Include stopped containers`,
+Shows container status, ports, and other information for all services
+defined in your ork.yml configuration file.`,
+	Example: `
+ork ps                       List all services in current project
+ork ps --all                 Include stopped containers`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
