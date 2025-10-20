@@ -37,3 +37,8 @@ type HealthCheck struct {
 	Timeout  string `yaml:"timeout"`  // Request timeout (e.g., 3s)
 	Retries  int    `yaml:"retries"`  // Number of retries before unhealthy
 }
+
+// GlobalConfig represents the global ~/.ork/config.yml file structure
+type GlobalConfig struct {
+	Workspaces []string `yaml:"workspaces"` // List of workspace directories to scan for git repos
+}
