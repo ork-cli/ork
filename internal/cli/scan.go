@@ -21,8 +21,6 @@ var scanCmd = &cobra.Command{
 	Long: `
 Scan configured workspace directories to discover git repositories.
 
-The scan results are cached for 24 hours to improve performance. Use --refresh to force a new scan.
-
 Workspace directories can be configured in ~/.ork/config.yml:
 
   workspaces:
@@ -35,38 +33,60 @@ If no configuration exists, ork will scan default directories: ~/code, ~/project
 }
 
 const (
-	bulletFormat   = "  • %s"
-	tableRowFormat = "%s  %s  %s\n"
+	bulletFormat        = "  • %s"
+	tableRowFormat      = "%s  %s  %s\n"
+	detailedTableFormat = "%s  %s  %s  %s  %s\n"
+	noReposMessage      = "No git repositories found"
+	workspaceConfigMsg  = "Make sure you have repositories in your workspace directories:"
+	scanDepth           = 3
+
+	// Column width limits
+	maxNameWidth   = 25
+	maxPathWidth   = 40
+	maxBranchWidth = 35
+	maxStatusWidth = 30
+	minBranchWidth = 15
 )
 
+// detailedColumnWidths holds the column widths for a detailed view
+type detailedColumnWidths struct {
+	name   int
+	path   int
+	branch int
+	commit int
+	status int
+}
+
+// detailedStyles holds all the lipgloss styles for a detailed view
+type detailedStyles struct {
+	header    lipgloss.Style
+	separator lipgloss.Style
+	name      lipgloss.Style
+	path      lipgloss.Style
+	branch    lipgloss.Style
+	commit    lipgloss.Style
+	clean     lipgloss.Style
+	dirty     lipgloss.Style
+}
+
 var (
-	scanRefresh bool
+	scanDetailed bool
 )
 
 func init() {
 	rootCmd.AddCommand(scanCmd)
-	scanCmd.Flags().BoolVar(&scanRefresh, "refresh", false, "Force a fresh scan, ignoring cache")
+	scanCmd.Flags().BoolVarP(&scanDetailed, "detailed", "d", false, "Show detailed git state (branch, commit, changes)")
 }
 
-func runScan(cmd *cobra.Command, args []string) error {
+// ============================================================================
+// Main Command Logic
+// ============================================================================
+
+func runScan(_ *cobra.Command, _ []string) error {
 	// Load global config
 	globalConfig, err := config.LoadGlobal()
 	if err != nil {
 		return fmt.Errorf("failed to load global config: %w", err)
-	}
-
-	// Try to load from cache if not refreshing
-	if !scanRefresh {
-		if repos := tryLoadCache(globalConfig.Workspaces); repos != nil {
-			return nil // Cache was loaded and displayed
-		}
-	}
-
-	// Invalidate cache if refreshing
-	if scanRefresh {
-		if err := git.InvalidateCache(); err != nil {
-			return fmt.Errorf("failed to invalidate cache: %w", err)
-		}
 	}
 
 	// Filter and validate workspaces
@@ -84,29 +104,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Save to cache (non-fatal if it fails)
-	saveCacheIfPossible(repos)
-
 	// Display results
 	displayResults(repos, elapsed, globalConfig.Workspaces)
 
 	return nil
 }
 
-func tryLoadCache(workspaces []string) []git.Repository {
-	cached, err := git.LoadCache()
-	if err == nil && cached != nil {
-		ui.Success("Loaded repositories from cache")
-		printRepositories(cached, workspaces)
-		fmt.Println()
-		fmt.Println(ui.Dim("Use 'ork scan --refresh' to force a fresh scan"))
-		return cached
-	}
-	return nil
-}
+// ============================================================================
+// Workspace Management
+// ============================================================================
 
 func filterExistingWorkspaces(workspaces []string) []string {
-	existing := []string{}
+	var existing []string
 	for _, workspace := range workspaces {
 		if workspaceExists(workspace) {
 			existing = append(existing, workspace)
@@ -134,34 +143,34 @@ func handleNoWorkspaces(configuredWorkspaces []string) error {
 	ui.Warning("No workspace directories found")
 	fmt.Println()
 	fmt.Println("Configure workspaces in ~/.ork/config.yml or ensure these directories exist:")
-	for _, workspace := range configuredWorkspaces {
+	printWorkspaceList(configuredWorkspaces)
+	return nil
+}
+
+func printWorkspaceList(workspaces []string) {
+	for _, workspace := range workspaces {
 		fmt.Println(ui.Dim(fmt.Sprintf(bulletFormat, workspace)))
 	}
-	return nil
 }
 
 func displayScanningMessage(workspaces []string) {
 	ui.Info(fmt.Sprintf("Scanning %d workspace(s)...", len(workspaces)))
-	for _, workspace := range workspaces {
-		fmt.Println(ui.Dim(fmt.Sprintf(bulletFormat, workspace)))
-	}
+	printWorkspaceList(workspaces)
 	fmt.Println()
 }
 
+// ============================================================================
+// Repository Discovery
+// ============================================================================
+
 func performDiscovery(workspaces []string) ([]git.Repository, time.Duration, error) {
 	start := time.Now()
-	repos, err := git.DiscoverRepositories(workspaces, 3)
+	repos, err := git.DiscoverRepositories(workspaces, scanDepth)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to discover repositories: %w", err)
 	}
 	elapsed := time.Since(start)
 	return repos, elapsed, nil
-}
-
-func saveCacheIfPossible(repos []git.Repository) {
-	if err := git.SaveCache(repos); err != nil {
-		ui.Warning(fmt.Sprintf("Warning: Failed to save cache: %v", err))
-	}
 }
 
 func displayResults(repos []git.Repository, elapsed time.Duration, workspaces []string) {
@@ -170,14 +179,16 @@ func displayResults(repos []git.Repository, elapsed time.Duration, workspaces []
 	printRepositories(repos, workspaces)
 }
 
+// ============================================================================
+// Output Formatting - Basic View
+// ============================================================================
+
 func printRepositories(repos []git.Repository, workspaces []string) {
 	if len(repos) == 0 {
-		ui.Warning("No git repositories found")
+		ui.Warning(noReposMessage)
 		fmt.Println()
-		fmt.Println("Make sure you have repositories in your workspace directories:")
-		for _, workspace := range workspaces {
-			fmt.Println(ui.Dim(fmt.Sprintf(bulletFormat, workspace)))
-		}
+		fmt.Println(workspaceConfigMsg)
+		printWorkspaceList(workspaces)
 		return
 	}
 
@@ -185,6 +196,12 @@ func printRepositories(repos []git.Repository, workspaces []string) {
 	sort.Slice(repos, func(i, j int) bool {
 		return repos[i].Name < repos[j].Name
 	})
+
+	// Use the detailed view if a flag is set
+	if scanDetailed {
+		printDetailedRepositories(repos)
+		return
+	}
 
 	// Create header style
 	headerStyle := lipgloss.NewStyle().
@@ -250,6 +267,10 @@ func printRepositories(repos []git.Repository, workspaces []string) {
 	}
 }
 
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
@@ -273,4 +294,129 @@ func repeatChar(char string, count int) string {
 		result += char
 	}
 	return result
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// ============================================================================
+// Output Formatting - Detailed View
+// ============================================================================
+
+// printDetailedRepositories displays repositories with git state information
+func printDetailedRepositories(repos []git.Repository) {
+	styles := createDetailedStyles()
+	widths := calculateDetailedColumnWidths(repos)
+	printDetailedHeader(styles, widths)
+	printDetailedRows(repos, styles, widths)
+}
+
+// createDetailedStyles creates all lipgloss styles for the detailed view
+func createDetailedStyles() detailedStyles {
+	return detailedStyles{
+		header:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
+		separator: lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
+		name:      lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true),
+		path:      lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
+		branch:    lipgloss.NewStyle().Foreground(lipgloss.Color("13")),
+		commit:    lipgloss.NewStyle().Foreground(lipgloss.Color("11")),
+		clean:     lipgloss.NewStyle().Foreground(lipgloss.Color("10")),
+		dirty:     lipgloss.NewStyle().Foreground(lipgloss.Color("9")),
+	}
+}
+
+// calculateDetailedColumnWidths calculates optimal column widths based on content
+func calculateDetailedColumnWidths(repos []git.Repository) detailedColumnWidths {
+	widths := detailedColumnWidths{
+		name:   len("NAME"),
+		path:   len("PATH"),
+		branch: minBranchWidth,
+		commit: len("COMMIT"),
+		status: len("STATUS"),
+	}
+
+	// Calculate based on actual data
+	for _, repo := range repos {
+		widths.name = maxInt(widths.name, len(repo.Name))
+		widths.path = maxInt(widths.path, len(repo.Path))
+
+		if state, err := git.GetRepoState(repo.Path); err == nil {
+			widths.branch = maxInt(widths.branch, len(state.Branch))
+			widths.status = maxInt(widths.status, len(state.UncommittedSummary))
+		}
+	}
+
+	// Apply max limits
+	widths.name = minInt(widths.name, maxNameWidth)
+	widths.path = minInt(widths.path, maxPathWidth)
+	widths.branch = minInt(widths.branch, maxBranchWidth)
+	widths.status = minInt(widths.status, maxStatusWidth)
+
+	return widths
+}
+
+// printDetailedHeader prints the header row for a detailed view
+func printDetailedHeader(styles detailedStyles, widths detailedColumnWidths) {
+	// Print header
+	fmt.Printf(detailedTableFormat,
+		styles.header.Render(padRight("NAME", widths.name)),
+		styles.header.Render(padRight("PATH", widths.path)),
+		styles.header.Render(padRight("BRANCH", widths.branch)),
+		styles.header.Render(padRight("COMMIT", widths.commit)),
+		styles.header.Render(padRight("STATUS", widths.status)))
+
+	// Print separator
+	fmt.Printf(detailedTableFormat,
+		styles.separator.Render(repeatChar("─", widths.name)),
+		styles.separator.Render(repeatChar("─", widths.path)),
+		styles.separator.Render(repeatChar("─", widths.branch)),
+		styles.separator.Render(repeatChar("─", widths.commit)),
+		styles.separator.Render(repeatChar("─", widths.status)))
+}
+
+// printDetailedRows prints all repository rows with git state
+func printDetailedRows(repos []git.Repository, styles detailedStyles, widths detailedColumnWidths) {
+	for _, repo := range repos {
+		printDetailedRow(repo, styles, widths)
+	}
+}
+
+// printDetailedRow prints a single repository row with git state
+func printDetailedRow(repo git.Repository, styles detailedStyles, widths detailedColumnWidths) {
+	state, err := git.GetRepoState(repo.Path)
+	if err != nil {
+		printDetailedErrorRow(repo, err.Error(), styles, widths)
+		return
+	}
+
+	statusStyle := styles.clean
+	if state.HasUncommitted {
+		statusStyle = styles.dirty
+	}
+
+	fmt.Printf(detailedTableFormat,
+		styles.name.Render(padRight(truncate(repo.Name, widths.name), widths.name)),
+		styles.path.Render(padRight(truncate(repo.Path, widths.path), widths.path)),
+		styles.branch.Render(padRight(truncate(state.Branch, widths.branch), widths.branch)),
+		styles.commit.Render(padRight(state.CommitHash, widths.commit)),
+		statusStyle.Render(state.UncommittedSummary))
+}
+
+// printDetailedErrorRow prints an error row for a repository that failed to load
+func printDetailedErrorRow(repo git.Repository, errMsg string, styles detailedStyles, widths detailedColumnWidths) {
+	fmt.Printf(tableRowFormat,
+		styles.name.Render(padRight(truncate(repo.Name, widths.name), widths.name)),
+		styles.path.Render(padRight(truncate(repo.Path, widths.path), widths.path)),
+		styles.dirty.Render("error: "+errMsg))
 }
