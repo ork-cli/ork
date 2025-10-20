@@ -9,6 +9,10 @@ import (
 	"github.com/go-git/go-git/v5"
 )
 
+// ============================================================================
+// Type Definitions
+// ============================================================================
+
 // Repository represents a discovered git repository
 type Repository struct {
 	Name string // Repository name (e.g., "frontend", "api")
@@ -16,8 +20,32 @@ type Repository struct {
 	URL  string // Git remote URL (e.g., "github.com/org/repo")
 }
 
-// DiscoverRepositories scans workspace directories and finds git repositories
-// It searches up to maxDepth levels deep (default: 3)
+// ============================================================================
+// Public Discovery API
+// ============================================================================
+
+// DiscoverRepositories scans workspace directories and finds git repositories.
+// It searches up to maxDepth levels deep (default: 3 if maxDepth <= 0).
+// Automatically skips hidden directories (except .ork), node_modules, vendor, dist, and build.
+//
+// Parameters:
+//   - workspaceDirs: List of directories to scan (supports ~ for home directory)
+//   - maxDepth: Maximum directory depth to search (0 or negative uses default of 3)
+//
+// Returns:
+//   - Deduplicated list of discovered repositories
+//   - Error if scanning fails
+//
+// Example:
+//
+//	workspaces := []string{"~/code", "~/projects"}
+//	repos, err := DiscoverRepositories(workspaces, 3)
+//	if err != nil {
+//	    return err
+//	}
+//	for _, repo := range repos {
+//	    fmt.Printf("%s: %s\n", repo.Name, repo.Path)
+//	}
 func DiscoverRepositories(workspaceDirs []string, maxDepth int) ([]Repository, error) {
 	if maxDepth <= 0 {
 		maxDepth = 3 // Default depth
@@ -42,6 +70,10 @@ func DiscoverRepositories(workspaceDirs []string, maxDepth int) ([]Repository, e
 
 	return repos, nil
 }
+
+// ============================================================================
+// Internal Helper Functions - Path Operations
+// ============================================================================
 
 // expandHomePath expands ~ to the home directory
 func expandHomePath(path string) string {
@@ -73,6 +105,10 @@ func deduplicateRepos(existing, found []Repository, seen map[string]bool) []Repo
 	}
 	return existing
 }
+
+// ============================================================================
+// Internal Helper Functions - Directory Scanning
+// ============================================================================
 
 // scanDirectory recursively searches for git repositories up to maxDepth
 func scanDirectory(dir string, currentDepth, maxDepth int) ([]Repository, error) {
@@ -145,6 +181,10 @@ func shouldSkipDirectory(entry os.DirEntry) bool {
 	return false
 }
 
+// ============================================================================
+// Internal Helper Functions - Git Operations
+// ============================================================================
+
 // isGitRepository checks if a directory is a git repository
 func isGitRepository(dir string) bool {
 	gitDir := filepath.Join(dir, ".git")
@@ -212,7 +252,20 @@ func normalizeGitURL(url string) string {
 	return url
 }
 
-// FindRepository searches for a repository by git URL in the discovered repos
+// ============================================================================
+// Public Repository Lookup
+// ============================================================================
+
+// FindRepository searches for a repository by git URL in the discovered repos.
+// The URL is normalized before comparison, so it works with both SSH and HTTPS URLs.
+//
+// Example:
+//
+//	repos, _ := DiscoverRepositories(workspaces, 3)
+//	repo := FindRepository(repos, "github.com/user/project")
+//	if repo != nil {
+//	    fmt.Println("Found at:", repo.Path)
+//	}
 func FindRepository(repos []Repository, gitURL string) *Repository {
 	normalized := normalizeGitURL(gitURL)
 
